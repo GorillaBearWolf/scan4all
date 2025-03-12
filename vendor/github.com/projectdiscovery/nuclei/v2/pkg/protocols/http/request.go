@@ -346,7 +346,7 @@ func (request *Request) ExecuteWithResults(reqURL string, dynamicValues, previou
 const drainReqSize = int64(8 * 1024)
 
 var errStopExecution = errors.New("stop execution due to unresolved variables")
-var someMapMutex = sync.RWMutex{}
+
 // executeRequest executes the actual generated request and returns error if occurred
 func (request *Request) executeRequest(reqURL string, generatedRequest *generatedRequest, previousEvent output.InternalEvent, hasInteractMatchers bool, callback protocols.OutputEventCallback, requestCount int) error {
 	request.setCustomHeaders(generatedRequest)
@@ -409,6 +409,10 @@ func (request *Request) executeRequest(reqURL string, generatedRequest *generate
 		}
 	} else if generatedRequest.original.Unsafe && generatedRequest.rawRequest != nil {
 		formedURL = generatedRequest.rawRequest.FullURL
+		// use request url as matched url if empty
+		if formedURL == "" {
+			formedURL = reqURL
+		}
 		if parsed, parseErr := url.Parse(formedURL); parseErr == nil {
 			hostname = parsed.Host
 		}
@@ -462,7 +466,6 @@ func (request *Request) executeRequest(reqURL string, generatedRequest *generate
 			}
 		}
 	}
-
 	if err != nil {
 		// rawhttp doesn't support draining response bodies.
 		if resp != nil && resp.Body != nil && generatedRequest.rawRequest == nil && !generatedRequest.original.Pipeline {
@@ -578,11 +581,9 @@ func (request *Request) executeRequest(reqURL string, generatedRequest *generate
 		}
 		outputEvent["curl-command"] = curlCommand
 		outputEvent["ip"] = httpclientpool.Dialer.GetDialedIP(hostname)
-
 		if request.options.Interactsh != nil {
 			request.options.Interactsh.MakePlaceholders(generatedRequest.interactshURLs, outputEvent)
 		}
-		someMapMutex.Lock()
 		for k, v := range previousEvent {
 			finalEvent[k] = v
 		}
@@ -598,7 +599,6 @@ func (request *Request) executeRequest(reqURL string, generatedRequest *generate
 				finalEvent[key] = v
 			}
 		}
-		someMapMutex.Unlock()
 
 		// prune signature internal values if any
 		request.pruneSignatureInternalValues(generatedRequest.meta)
